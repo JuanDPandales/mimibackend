@@ -9,6 +9,16 @@ const config: Config = {
     collectCoverageFrom: [
         'src/**/*.{ts,tsx}',
         '!src/**/*.spec.ts',
+        // Exclude NestJS boilerplate with no testable logic
+        '!src/main.ts',
+        '!src/**/*.module.ts',
+        // Exclude ORM/infrastructure entities (TypeORM decorators only)
+        '!src/**/*.orm-entity.ts',
+        // Exclude infrastructure repository implementations (TypeORM wrappers)
+        '!src/**/infrastructure/repositories/*.ts',
+        // Exclude shared config files (no logic, only config objects)
+        '!src/shared/config/*.ts',
+        '!src/shared/database/*.ts',
     ],
 
     coverageDirectory: 'coverage',
