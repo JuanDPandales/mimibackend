@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: mimi_store_db
+    environment:
+      POSTGRES_USER: pawsome
+      POSTGRES_PASSWORD: pawsome123
+      POSTGRES_DB: pawsome_store
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: always
+
+volumes:
+  pgdata:

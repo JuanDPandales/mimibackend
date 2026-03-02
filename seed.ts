@@ -1,20 +1,21 @@
+import 'dotenv/config';
+import * as crypto from 'crypto';
 import { DataSource } from 'typeorm';
-import { ProductOrmEntity } from './src/modules/products/infrastructure/entities/product.orm-entity';
-import { StockOrmEntity } from './src/modules/stock/infrastructure/entities/stock.orm-entity';
 import { CustomerOrmEntity } from './src/modules/customers/infrastructure/entities/customer.orm-entity';
 import { DeliveryOrmEntity } from './src/modules/deliveries/infrastructure/entities/delivery.orm-entity';
-import { TransactionOrmEntity } from './src/modules/transactions/infrastructure/entities/transaction.orm-entity';
+import { ProductOrmEntity } from './src/modules/products/infrastructure/entities/product.orm-entity';
+import { StockOrmEntity } from './src/modules/stock/infrastructure/entities/stock.orm-entity';
 import { IdempotencyKeyOrmEntity } from './src/modules/transactions/infrastructure/entities/idempotency-key.orm-entity';
-import * as crypto from 'crypto';
+import { TransactionOrmEntity } from './src/modules/transactions/infrastructure/entities/transaction.orm-entity';
 
 
 const appDataSource = new DataSource({
     type: 'postgres',
     host: process.env.DB_HOST || 'localhost',
     port: Number(process.env.DB_PORT) || 5432,
-    username: process.env.DB_USER || 'pawsome',
-    password: process.env.DB_PASS || 'pawsome123',
-    database: process.env.DB_NAME || 'pawsome_store',
+    username: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASS || 'PunPr333123sss0rf',
+    database: process.env.DB_NAME || 'postgres',
     entities: [
         ProductOrmEntity,
         StockOrmEntity,
@@ -24,6 +25,9 @@ const appDataSource = new DataSource({
         IdempotencyKeyOrmEntity
     ],
     synchronize: true, // Auto-create tables for simplicity in dev/seed
+    ssl: {
+        rejectUnauthorized: false
+    }
 });
 
 async function runSeed() {
