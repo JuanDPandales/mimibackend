@@ -11,13 +11,8 @@ export class AppController {
   }
 
   @Get('status')
-  getStatus() {
-    return {
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      service: 'Mimi Store API',
-      version: '1.0.0',
-    };
+  getStatus(): null {
+    return null;
   }
 }
 
