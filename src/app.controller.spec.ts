@@ -19,4 +19,14 @@ describe('AppController', () => {
       expect(appController.getHello()).toBe('Hello World!');
     });
   });
+
+  describe('status', () => {
+    it('should return service status', () => {
+      const status = appController.getStatus();
+      expect(status.status).toBe('ok');
+      expect(status.service).toBe('Mimi Store API');
+      expect(status).toHaveProperty('timestamp');
+    });
+  });
 });
+
