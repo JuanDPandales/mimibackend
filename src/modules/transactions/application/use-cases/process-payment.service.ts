@@ -55,7 +55,7 @@ export interface ProcessPaymentOutput {
   transactionId: string;
   reference: string;
   status: string;
-  paymentId: string | null;
+  gatewayId: string | null;
   amountInCents: number;
 }
 
@@ -103,7 +103,8 @@ export class ProcessPaymentService {
         phone: input.customerPhone,
       });
 
-      const amountInCents = product.price + this.baseFee + this.deliveryFee;
+      const totalInPesos = product.price + this.baseFee + this.deliveryFee;
+      const amountInCents = totalInPesos * 100;
       const reference = crypto.randomUUID();
 
       await queryRunner1.connect();
@@ -236,7 +237,7 @@ export class ProcessPaymentService {
         transactionId: pendingTransaction.id,
         reference,
         status: paymentData.status,
-        paymentId: paymentData.id,
+        gatewayId: paymentData.id,
         amountInCents,
       });
     } catch (error) {
