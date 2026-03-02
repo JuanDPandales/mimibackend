@@ -6,6 +6,8 @@ import { AuditLogger } from '../audit/audit.logger';
 
 describe('PaymentGatewayService', () => {
   let service: PaymentGatewayService;
+  let config: ConfigService;
+  let audit: { log: jest.Mock; error: jest.Mock; warn: jest.Mock };
 
   const defaultConfigMap: Record<string, string> = {
     'payment.gatewaySandboxUrl': 'gatewaySandboxUrl',
@@ -24,32 +26,100 @@ describe('PaymentGatewayService', () => {
         {
           provide: ConfigService,
           useValue: {
-            get: jest.fn().mockImplementation((key: string) =>
-              configOverrides[key] ?? defaultConfigMap[key] ?? undefined,
-            ),
+            get: jest.fn().mockImplementation((key: string) => {
+              if (Object.prototype.hasOwnProperty.call(configOverrides, key)) {
+                return configOverrides[key];
+              }
+              return defaultConfigMap[key] ?? undefined;
+            }),
           },
         },
         {
           provide: AuditLogger,
-          useValue: {
-            log: jest.fn(),
-            error: jest.fn(),
-            warn: jest.fn(),
-          },
+          useFactory: () => audit,
         },
       ],
     }).compile();
+    config = module.get<ConfigService>(ConfigService);
     return module.get<PaymentGatewayService>(PaymentGatewayService);
   }
 
   beforeEach(async () => {
     jest.restoreAllMocks();
+    audit = {
+      log: jest.fn(),
+      error: jest.fn(),
+      warn: jest.fn(),
+    };
     service = await buildService();
     global.fetch = jest.fn();
   });
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  describe('constructor config/env fallbacks', () => {
+    it('uses env fallbacks when config values are missing', async () => {
+      const prevEnv = process.env.NODE_ENV;
+      const prevSandbox = process.env.GATEWAY_SANDBOX_URL;
+      const prevPub = process.env.GATEWAY_PUB_KEY;
+
+      try {
+        process.env.NODE_ENV = 'production';
+        process.env.GATEWAY_SANDBOX_URL = 'https://env-gw';
+        process.env.GATEWAY_PUB_KEY = 'env_pub';
+
+        const svc = await buildService({
+          'payment.gatewaySandboxUrl': undefined,
+          'payment.gatewayPubKey': undefined,
+          'payment.gatewayPrvKey': undefined,
+          'payment.gatewayEventsKey': undefined,
+          'payment.gatewayIntegrityKey': undefined,
+        });
+
+        (global.fetch as jest.Mock).mockResolvedValueOnce({
+          ok: false,
+          json: async () => ({}),
+        });
+
+        await svc.getAcceptanceToken();
+        expect(global.fetch).toHaveBeenCalledWith('https://env-gw/merchants/env_pub');
+      } finally {
+        process.env.NODE_ENV = prevEnv;
+        process.env.GATEWAY_SANDBOX_URL = prevSandbox;
+        process.env.GATEWAY_PUB_KEY = prevPub;
+      }
+    });
+
+    it('falls back to empty strings when both config and env are missing', async () => {
+      const prevEnv = process.env.NODE_ENV;
+      const prevSandbox = process.env.GATEWAY_SANDBOX_URL;
+      const prevPub = process.env.GATEWAY_PUB_KEY;
+
+      try {
+        process.env.NODE_ENV = 'production';
+        delete process.env.GATEWAY_SANDBOX_URL;
+        delete process.env.GATEWAY_PUB_KEY;
+
+        const svc = await buildService({
+          'payment.gatewaySandboxUrl': undefined,
+          'payment.gatewayPubKey': undefined,
+        });
+
+        (global.fetch as jest.Mock).mockResolvedValueOnce({
+          ok: false,
+          json: async () => ({}),
+        });
+
+        await svc.getAcceptanceToken();
+        expect(global.fetch).toHaveBeenCalledWith('/merchants/');
+      } finally {
+        process.env.NODE_ENV = prevEnv;
+        process.env.GATEWAY_SANDBOX_URL = prevSandbox;
+        process.env.GATEWAY_PUB_KEY = prevPub;
+      }
+    });
   });
 
   // ─── getAcceptanceToken ───────────────────────────────────────────────────────
@@ -271,6 +341,31 @@ describe('PaymentGatewayService', () => {
       }
     });
 
+    it('should stringify object messages in error.messages arrays', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: { presigned_acceptance: { acceptance_token: 'acc_123' } },
+        }),
+      });
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({
+          error: {
+            messages: {
+              card: [{ code: 'X', message: 'nested' }],
+            },
+          },
+        }),
+      });
+
+      const result = await service.createTransaction(baseInput);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.message).toContain('"code":"X"');
+      }
+    });
+
     it('should return PaymentError with stringified reason when error.reason is an object (line 219)', async () => {
       (global.fetch as jest.Mock).mockResolvedValueOnce({
         ok: true,
@@ -314,6 +409,30 @@ describe('PaymentGatewayService', () => {
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.error.message).toContain('INVALID_ACCESS_TOKEN');
+      }
+    });
+
+    it('should use error.type when reason is missing', async () => {
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: { presigned_acceptance: { acceptance_token: 'acc_123' } },
+        }),
+      });
+      (global.fetch as jest.Mock).mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        json: async () => ({
+          error: {
+            type: 'FORBIDDEN',
+          },
+        }),
+      });
+
+      const result = await service.createTransaction(baseInput);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.message).toContain('FORBIDDEN');
       }
     });
 
@@ -374,6 +493,37 @@ describe('PaymentGatewayService', () => {
         expect(result.error.message).toContain('Payment Gateway');
       }
     });
+
+    it('logs gateway error details when not in production', async () => {
+      const prevEnv = process.env.NODE_ENV;
+      try {
+        process.env.NODE_ENV = 'test';
+
+        (global.fetch as jest.Mock).mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            data: {
+              presigned_acceptance: { acceptance_token: 'acc_123' },
+            },
+          }),
+        });
+        (global.fetch as jest.Mock).mockResolvedValueOnce({
+          ok: false,
+          status: 400,
+          json: async () => ({
+            error: { type: 'BAD_REQUEST' },
+          }),
+        });
+
+        await service.createTransaction(baseInput);
+
+        expect(audit.error).toHaveBeenCalledWith(
+          expect.objectContaining({ event: 'TRANSACTION_ERROR' }),
+        );
+      } finally {
+        process.env.NODE_ENV = prevEnv;
+      }
+    });
   });
 
   // ─── generateSignature ───────────────────────────────────────────────────────
@@ -389,6 +539,34 @@ describe('PaymentGatewayService', () => {
       const sig1 = service.generateSignature('ref1', 1000.9, 'COP');
       const sig2 = service.generateSignature('ref1', 1000, 'COP');
       expect(sig1).toBe(sig2);
+    });
+
+    it('does not emit debug log in production', () => {
+      const prevEnv = process.env.NODE_ENV;
+      try {
+        process.env.NODE_ENV = 'production';
+        audit.log.mockClear(); // ignore constructor log from beforeEach
+
+        service.generateSignature('ref-prod', 1000, 'COP');
+        expect(audit.log).not.toHaveBeenCalled();
+      } finally {
+        process.env.NODE_ENV = prevEnv;
+      }
+    });
+
+    it('emits debug log when not in production', () => {
+      const prevEnv = process.env.NODE_ENV;
+      try {
+        process.env.NODE_ENV = 'test';
+        audit.log.mockClear(); // ignore constructor log from beforeEach
+
+        service.generateSignature('ref-test', 1000, 'COP');
+        expect(audit.log).toHaveBeenCalledWith(
+          expect.objectContaining({ event: 'TRANSACTION_CREATED' }),
+        );
+      } finally {
+        process.env.NODE_ENV = prevEnv;
+      }
     });
   });
 
@@ -430,6 +608,30 @@ describe('PaymentGatewayService', () => {
       ).toBe(false);
     });
 
+    it('should return false when signature length matches but content differs', () => {
+      const transactionId = 'tx_123';
+      const status = 'APPROVED';
+      const amountInCents = 1000;
+      const timestamp = '123456789';
+      const payload = `${transactionId}${status}${amountInCents}${timestamp}test_events_key`;
+      const validHash = crypto
+        .createHash('sha256')
+        .update(payload)
+        .digest('hex');
+
+      const badHash = `${validHash[0] === 'a' ? 'b' : 'a'}${validHash.slice(1)}`;
+
+      expect(
+        service.verifyWebhookSignature(
+          transactionId,
+          status,
+          amountInCents,
+          timestamp,
+          badHash,
+        ),
+      ).toBe(false);
+    });
+
     it('should return false when signatures have different lengths (line 288)', () => {
       // A valid sha256 is 64 chars; providing a shorter hash forces length mismatch
       expect(
@@ -441,6 +643,19 @@ describe('PaymentGatewayService', () => {
           'short',
         ),
       ).toBe(false);
+    });
+
+    it('does not emit webhook debug log in production', () => {
+      const prevEnv = process.env.NODE_ENV;
+      try {
+        process.env.NODE_ENV = 'production';
+        audit.log.mockClear(); // ignore constructor log from beforeEach
+
+        service.verifyWebhookSignature('tx', 'APPROVED', 1, 't', 'short');
+        expect(audit.log).not.toHaveBeenCalled();
+      } finally {
+        process.env.NODE_ENV = prevEnv;
+      }
     });
   });
 });

@@ -139,6 +139,33 @@ describe('ProcessPaymentService', () => {
     service = module.get<ProcessPaymentService>(ProcessPaymentService);
   });
 
+  it('applies default fees when config returns 0/undefined', () => {
+    const cfg = {
+      get: jest.fn().mockImplementation((key: string) => {
+        if (key === 'payment.baseFee') return 0;
+        if (key === 'payment.deliveryFee') return undefined;
+        return null;
+      }),
+    } as unknown as ConfigService;
+
+    const dummy = {} as any;
+    const svc = new ProcessPaymentService(
+      dummy,
+      dummy,
+      dummy,
+      dummy,
+      dummy,
+      dummy,
+      dummy,
+      cfg,
+      { createQueryRunner: jest.fn().mockReturnValue({ release: jest.fn() }) } as any,
+      { log: jest.fn(), error: jest.fn(), warn: jest.fn() } as any,
+    );
+
+    expect((svc as any).baseFee).toBe(3500);
+    expect((svc as any).deliveryFee).toBe(8000);
+  });
+
   // ─── Existing tests ──────────────────────────────────────────────────────────
 
   it('should return NotFoundError if product does not exist', async () => {
@@ -206,6 +233,24 @@ describe('ProcessPaymentService', () => {
         status: 'ERROR',
       }),
     );
+  });
+
+  it('should return Payment processing failed when gateway throws', async () => {
+    mockProductRepo.findById.mockResolvedValue(mockProduct);
+    mockCustomerRepo.upsertByEmail.mockResolvedValue(mockCustomer);
+    mockQueryRunner.manager.getOne.mockResolvedValue({ quantity: 5 });
+    mockGateway.createTransaction.mockRejectedValue(new Error('Gateway crash'));
+
+    const result = await service.execute(mockInput);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.message).toContain('Payment processing failed');
+    }
+    expect(mockAuditLogger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'TRANSACTION_ERROR' }),
+    );
+    expect(mockQueryRunner.release).toHaveBeenCalledTimes(1);
   });
 
   // ─── New tests for coverage ───────────────────────────────────────────────────
@@ -289,6 +334,24 @@ describe('ProcessPaymentService', () => {
 
     await service.execute(mockInput);
 
+    expect(mockQueryRunner.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('should log rollback error as Unknown when rollback throws non-Error', async () => {
+    mockProductRepo.findById.mockResolvedValue(mockProduct);
+    mockCustomerRepo.upsertByEmail.mockResolvedValue(mockCustomer);
+    mockQueryRunner.manager.getOne.mockResolvedValue({ quantity: 0 });
+    mockQueryRunner.rollbackTransaction.mockRejectedValue('Rollback failed');
+
+    const result = await service.execute(mockInput);
+
+    expect(result.success).toBe(false);
+    expect(mockAuditLogger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'TRANSACTION_ERROR',
+        error: 'Unknown',
+      }),
+    );
     expect(mockQueryRunner.release).toHaveBeenCalledTimes(1);
   });
 
@@ -394,6 +457,27 @@ describe('ProcessPaymentService', () => {
     );
   });
 
+  it('should log Unknown when release throws non-Error', async () => {
+    mockProductRepo.findById.mockResolvedValue(mockProduct);
+    mockCustomerRepo.upsertByEmail.mockResolvedValue(mockCustomer);
+    mockQueryRunner.manager.getOne.mockResolvedValue({ quantity: 5 });
+    mockGateway.createTransaction.mockResolvedValue({
+      success: true,
+      value: { id: 'gw-rel2', status: 'APPROVED' },
+    });
+    mockQueryRunner.release.mockRejectedValue('release failed');
+
+    const result = await service.execute(mockInput);
+
+    expect(result.success).toBe(true);
+    expect(mockAuditLogger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'TRANSACTION_ERROR',
+        error: 'Unknown',
+      }),
+    );
+  });
+
   it('should log TRANSACTION_ROLLBACK_ERROR when rollback in catch fails', async () => {
     mockProductRepo.findById.mockResolvedValue(mockProduct);
     mockCustomerRepo.upsertByEmail.mockResolvedValue(mockCustomer);
@@ -409,6 +493,45 @@ describe('ProcessPaymentService', () => {
     expect(mockAuditLogger.error).toHaveBeenCalledWith(
       expect.objectContaining({
         event: 'TRANSACTION_DECLINED',
+      }),
+    );
+  });
+
+  it('should use Unknown when both operation error and rollback error are non-Error', async () => {
+    mockProductRepo.findById.mockResolvedValue(mockProduct);
+    mockCustomerRepo.upsertByEmail.mockResolvedValue(mockCustomer);
+    mockQueryRunner.manager.getOne.mockResolvedValue({ quantity: 5 });
+    mockQueryRunner.manager.save.mockRejectedValue('save failed');
+    mockQueryRunner.rollbackTransaction.mockRejectedValue('rollback failed');
+
+    const result = await service.execute(mockInput);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.message).toContain('Failed to start transaction');
+      expect(result.error.message).toContain('Unknown');
+    }
+    expect(mockAuditLogger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'TRANSACTION_DECLINED',
+        error: 'Unknown',
+      }),
+    );
+  });
+
+  it('should log Unknown when outer catch receives non-Error', async () => {
+    mockProductRepo.findById.mockResolvedValue(mockProduct);
+    mockCustomerRepo.upsertByEmail.mockResolvedValue(mockCustomer);
+    mockQueryRunner.manager.getOne.mockResolvedValue({ quantity: 5 });
+    mockGateway.createTransaction.mockRejectedValue('boom');
+
+    const result = await service.execute(mockInput);
+
+    expect(result.success).toBe(false);
+    expect(mockAuditLogger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'TRANSACTION_ERROR',
+        error: 'Unknown',
       }),
     );
   });

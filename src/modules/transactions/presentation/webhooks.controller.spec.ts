@@ -113,6 +113,63 @@ describe('WebhooksController', () => {
       );
     });
 
+    it('should throw UnauthorizedException if amount_in_cents is not a number', async () => {
+      const payload = {
+        data: {
+          transaction: {
+            id: 'id-1',
+            reference: 'ref-1',
+            amount_in_cents: '1000',
+            currency: 'COP',
+            status: 'APPROVED',
+          },
+        },
+        signature: { checksum: 'sig' },
+      };
+
+      await expect(controller.handlePaymentWebhook(payload)).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
+    it('should throw UnauthorizedException if currency is not a string', async () => {
+      const payload = {
+        data: {
+          transaction: {
+            id: 'id-1',
+            reference: 'ref-1',
+            amount_in_cents: 1000,
+            currency: 123,
+            status: 'APPROVED',
+          },
+        },
+        signature: { checksum: 'sig' },
+      };
+
+      await expect(controller.handlePaymentWebhook(payload)).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
+    it('should throw UnauthorizedException if status is not a string', async () => {
+      const payload = {
+        data: {
+          transaction: {
+            id: 'id-1',
+            reference: 'ref-1',
+            amount_in_cents: 1000,
+            currency: 'COP',
+            status: 999,
+          },
+        },
+        signature: { checksum: 'sig' },
+      };
+
+      await expect(controller.handlePaymentWebhook(payload)).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
     it('should throw UnauthorizedException and audit WEBHOOK_SIGNATURE_INVALID if signature is invalid', async () => {
       mockGatewayService.verifyWebhookSignature.mockReturnValue(false);
       const payload = {
@@ -163,6 +220,33 @@ describe('WebhooksController', () => {
       });
       expect(mockAuditLogger.log).toHaveBeenCalledWith(
         expect.objectContaining({ event: 'WEBHOOK_SIGNATURE_VALID' }),
+      );
+    });
+
+    it('should validate signature using empty timestamp when created_at is missing', async () => {
+      mockGatewayService.verifyWebhookSignature.mockReturnValue(true);
+      const payload = {
+        data: {
+          transaction: {
+            id: 'id-1',
+            reference: 'ref-1',
+            amount_in_cents: 1000,
+            currency: 'COP',
+            status: 'APPROVED',
+          },
+        },
+        signature: { checksum: 'good-sig' },
+      };
+
+      const response = await controller.handlePaymentWebhook(payload);
+
+      expect(response).toEqual({ received: true });
+      expect(mockGatewayService.verifyWebhookSignature).toHaveBeenCalledWith(
+        'id-1',
+        'APPROVED',
+        1000,
+        '',
+        'good-sig',
       );
     });
   });

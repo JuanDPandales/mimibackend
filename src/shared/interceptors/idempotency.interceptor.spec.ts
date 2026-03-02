@@ -1,5 +1,5 @@
 import { CallHandler, ExecutionContext } from '@nestjs/common';
-import { of } from 'rxjs';
+import { lastValueFrom, of } from 'rxjs';
 import { DataSource, Repository } from 'typeorm';
 import { IdempotencyKeyOrmEntity } from '../../modules/transactions/infrastructure/entities/idempotency-key.orm-entity';
 import { AuditLogger } from '../audit/audit.logger';
@@ -15,7 +15,7 @@ describe('IdempotencyInterceptor', () => {
   beforeEach(() => {
     mockRepository = {
       findOne: jest.fn(),
-      save: jest.fn(),
+      save: jest.fn().mockResolvedValue(undefined),
     };
 
     mockDataSource = {
@@ -61,9 +61,8 @@ describe('IdempotencyInterceptor', () => {
       mockCallHandler as CallHandler,
     );
 
-    result$.subscribe((res) => {
-      expect(res).toEqual({ success: true, data: 'new response' });
-    });
+    const res = await lastValueFrom(result$);
+    expect(res).toEqual({ success: true, data: 'new response' });
     expect(mockDataSource.getRepository).not.toHaveBeenCalled();
   });
 
@@ -76,9 +75,8 @@ describe('IdempotencyInterceptor', () => {
       mockCallHandler as CallHandler,
     );
 
-    result$.subscribe((res) => {
-      expect(res).toEqual({ success: true, data: 'new response' });
-    });
+    const res = await lastValueFrom(result$);
+    expect(res).toEqual({ success: true, data: 'new response' });
     expect(mockDataSource.getRepository).not.toHaveBeenCalled();
   });
 
@@ -96,9 +94,8 @@ describe('IdempotencyInterceptor', () => {
       mockCallHandler as CallHandler,
     );
 
-    result$.subscribe((res) => {
-      expect(res).toEqual({ cached: true });
-    });
+    const res = await lastValueFrom(result$);
+    expect(res).toEqual({ cached: true });
 
     expect(mockAuditLogger.warn).toHaveBeenCalledWith(
       expect.objectContaining({ event: 'IDEMPOTENCY_HIT' }),
@@ -115,13 +112,12 @@ describe('IdempotencyInterceptor', () => {
       mockCallHandler as CallHandler,
     );
 
-    result$.subscribe((res) => {
-      expect(res).toEqual({ success: true, data: 'new response' });
-      expect(mockRepository.save).toHaveBeenCalledWith({
-        key: 'new-key-123',
-        response: { success: true, data: 'new response' },
-        statusCode: 201,
-      });
+    const res = await lastValueFrom(result$);
+    expect(res).toEqual({ success: true, data: 'new response' });
+    expect(mockRepository.save).toHaveBeenCalledWith({
+      key: 'new-key-123',
+      response: { success: true, data: 'new response' },
+      statusCode: 201,
     });
   });
 
@@ -135,11 +131,36 @@ describe('IdempotencyInterceptor', () => {
       mockCallHandler as CallHandler,
     );
 
-    result$.subscribe((res) => {
-      expect(res).toEqual({ success: true, data: 'new response' });
-      expect(mockAuditLogger.error).toHaveBeenCalledWith(
-        expect.objectContaining({ event: 'IDEMPOTENCY_SAVE_ERROR' }),
-      );
-    });
+    const res = await lastValueFrom(result$);
+    expect(res).toEqual({ success: true, data: 'new response' });
+
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(mockAuditLogger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'IDEMPOTENCY_SAVE_ERROR' }),
+    );
+  });
+
+  it('should log unknown error message if saving rejects with a non-Error value', async () => {
+    (mockRepository.findOne as jest.Mock).mockResolvedValue(null);
+    (mockRepository.save as jest.Mock).mockRejectedValue('DB Error');
+
+    const context = createMockContext({ 'x-idempotency-key': 'new-key-123' });
+    const result$ = await interceptor.intercept(
+      context,
+      mockCallHandler as CallHandler,
+    );
+
+    const res = await lastValueFrom(result$);
+    expect(res).toEqual({ success: true, data: 'new response' });
+
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(mockAuditLogger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'IDEMPOTENCY_SAVE_ERROR',
+        error: 'Unknown error saving key',
+      }),
+    );
   });
 });
