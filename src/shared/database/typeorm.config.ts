@@ -9,21 +9,25 @@ import { ConfigService } from '@nestjs/config';
 
 export const getTypeOrmConfig = (
   configService: ConfigService,
-): TypeOrmModuleOptions => ({
-  type: 'postgres',
-  url: configService.get<string>('DATABASE_URL'),
-  ssl: configService.get<string>('NODE_ENV') === 'production'
-    ? { rejectUnauthorized: true }
-    : {
-      rejectUnauthorized: false,
-    },
-  entities: [
-    CustomerOrmEntity,
-    DeliveryOrmEntity,
-    ProductOrmEntity,
-    StockOrmEntity,
-    TransactionOrmEntity,
-    IdempotencyKeyOrmEntity,
-  ],
-  synchronize: false,
-});
+): TypeOrmModuleOptions => {
+  const url = configService.get<string>('DATABASE_URL');
+  return {
+    type: 'postgres',
+    url,
+    ssl: configService.get<string>('NODE_ENV') === 'production'
+      ? { rejectUnauthorized: true }
+      : {
+        rejectUnauthorized: false,
+      },
+    entities: [
+      CustomerOrmEntity,
+      DeliveryOrmEntity,
+      ProductOrmEntity,
+      StockOrmEntity,
+      TransactionOrmEntity,
+      IdempotencyKeyOrmEntity,
+    ],
+    synchronize: false,
+    logging: true,
+  };
+};
