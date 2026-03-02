@@ -10,7 +10,7 @@ import { DeliveriesModule } from './modules/deliveries/deliveries.module';
 import { ProductsModule } from './modules/products/products.module';
 import { StockModule } from './modules/stock/stock.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
-import { AuditModule } from './shared/audit.module';
+import { AuditModule } from './shared/audit/audit.module';
 import { throttlerConfig } from './shared/config/throttler.config';
 import { winstonConfig } from './shared/config/winston.config';
 import { getTypeOrmConfig } from './shared/database/typeorm.config';
@@ -19,6 +19,7 @@ import { getTypeOrmConfig } from './shared/database/typeorm.config';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      expandVariables: true,
     }),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
