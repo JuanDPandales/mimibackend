@@ -14,13 +14,16 @@ import { AuditModule } from './shared/audit/audit.module';
 import { throttlerConfig } from './shared/config/throttler.config';
 import { winstonConfig } from './shared/config/winston.config';
 import { getTypeOrmConfig } from './shared/database/typeorm.config';
+import { paymentConfig } from './shared/config/payment.config';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       expandVariables: true,
+      load: [paymentConfig],
     }),
+
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: getTypeOrmConfig,
