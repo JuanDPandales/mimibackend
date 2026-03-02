@@ -25,5 +25,5 @@ export const getTypeOrmConfig = (
     TransactionOrmEntity,
     IdempotencyKeyOrmEntity,
   ],
-  synchronize: configService.get<string>('NODE_ENV') !== 'production',
+  synchronize: false,
 });
