@@ -1,2 +1,4 @@
+packages:
+  - "."
 ignoredBuiltDependencies:
-  - '@nestjs/core'
+  - "@nestjs/core"

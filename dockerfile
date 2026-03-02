@@ -9,7 +9,7 @@ RUN corepack enable
 WORKDIR /app
 
 # Copy dependency definition files
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
@@ -31,7 +31,7 @@ RUN corepack enable
 WORKDIR /app
 
 # Copy dependency definition files
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
 # Install only production dependencies
 RUN pnpm install --prod --frozen-lockfile
