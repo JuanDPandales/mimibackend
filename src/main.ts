@@ -1,7 +1,7 @@
-import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
-import { AppModule } from './app.module';
+import { NestFactory } from '@nestjs/core';
 import helmet from 'helmet';
+import { AppModule } from './app.module';
 import { AppErrorFilter } from './common/filters/app-error.filter';
 import { AuditLogger } from './shared/audit/audit.logger';
 
@@ -37,4 +37,7 @@ async function bootstrap() {
   await app.listen(port);
   console.log(`Aplicación ejecutándose en el puerto: ${port}`);
 }
-bootstrap();
+bootstrap().catch((err) => {
+  console.error('Error starting application', err);
+  process.exit(1);
+});
