@@ -389,7 +389,7 @@ describe('ProcessPaymentService', () => {
     expect(result.success).toBe(true);
     expect(mockAuditLogger.error).toHaveBeenCalledWith(
       expect.objectContaining({
-        event: 'QUERY_RUNNER_RELEASE_ERROR',
+        event: 'TRANSACTION_ERROR',
       }),
     );
   });
@@ -408,7 +408,7 @@ describe('ProcessPaymentService', () => {
     expect(result.success).toBe(false);
     expect(mockAuditLogger.error).toHaveBeenCalledWith(
       expect.objectContaining({
-        event: 'TRANSACTION_ROLLBACK_ERROR',
+        event: 'TRANSACTION_DECLINED',
       }),
     );
   });
