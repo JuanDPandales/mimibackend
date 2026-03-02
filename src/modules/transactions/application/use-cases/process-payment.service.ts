@@ -11,6 +11,7 @@ import {
   DELIVERY_REPOSITORY,
   type IDeliveryRepository,
 } from '../../../../modules/deliveries/infrastructure/repositories/delivery.repository';
+import { StockOrmEntity } from '../../../../modules/stock/infrastructure/entities/stock.orm-entity';
 import { AuditLogger } from '../../../../shared/audit/audit.logger';
 import { PaymentGatewayService } from '../../../../shared/payment-gateway/payment-gateway.service';
 import {
@@ -112,10 +113,8 @@ export class ProcessPaymentService {
 
       try {
         const stockRecord = await queryRunner1.manager
-          .createQueryBuilder()
-          .select('stock')
-          .from('stock', 'stock')
-          .where('stock.product_id = :productId', {
+          .createQueryBuilder(StockOrmEntity, 'stock')
+          .where('stock.productId = :productId', {
             productId: input.productId,
           })
           .setLock('pessimistic_write')
@@ -170,8 +169,8 @@ export class ProcessPaymentService {
         await queryRunner1.manager.save(DeliveryOrmEntity, deliveryRecord);
 
         await queryRunner1.manager.decrement(
-          'stock',
-          { product_id: input.productId },
+          StockOrmEntity,
+          { productId: input.productId },
           'quantity',
           1,
         );
@@ -198,11 +197,14 @@ export class ProcessPaymentService {
           });
         }
 
+        const errorMessage = error instanceof Error ? error.message : 'Unknown';
         this.audit.error({
           event: 'TRANSACTION_ERROR',
-          error: error instanceof Error ? error.message : 'Unknown',
+          error: errorMessage,
         });
-        return err(new InternalServerError('Failed to start transaction'));
+        return err(
+          new InternalServerError(`Failed to start transaction: ${errorMessage}`),
+        );
       }
 
       const gatewayResult = await this.gateway.createTransaction({
