@@ -1,4 +1,4 @@
-import { StockOrmEntity } from 'src/modules/stock/infrastructure/entities/stock.orm-entity';
+import { StockOrmEntity } from '../../../stock/infrastructure/entities/stock.orm-entity';
 import {
   Column,
   CreateDateColumn,
