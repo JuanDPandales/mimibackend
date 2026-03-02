@@ -34,8 +34,9 @@ async function bootstrap() {
   app.useGlobalFilters(new AppErrorFilter(auditLogger));
 
   const port = process.env.PORT || 4000;
+  console.log(`[Main] Ready to listen on port: ${port}`);
   await app.listen(port);
-  console.log(`Aplicación ejecutándose en el puerto: ${port}`);
+  console.log(`[Main] Nest application successfully started on port: ${port}`);
 }
 bootstrap().catch((err) => {
   console.error('Error starting application', err);

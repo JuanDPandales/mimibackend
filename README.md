@@ -67,14 +67,14 @@ NODE_ENV=development
 FRONTEND_URL=http://localhost:3000
 
 # Database (AWS RDS)
-DB_HOST=mimidatabase.id.us-east-2.rds.amazonaws.com
+DB_HOST=mimidatabase.cv80qwiy4np5.us-east-2.rds.amazonaws.com
 DB_PORT=5432
 DB_USER=postgres
 DB_PASS=PUnPr333123sss0rf
 DB_NAME=mimidatabase
 
 # TypeORM / Prisma connection string
-DATABASE_URL=postgresql://postgres:PUnPr333123sss0rf@mimidatabase.id.us-east-2.rds.amazonaws.com:5432/postgres
+DATABASE_URL=postgresql://postgres:PUnPryri8kxpE834a0rf@mimidatabase.cv80qwiy4np5.us-east-2.rds.amazonaws.com:5432/mimidatabase
 
 # Payment Gateway Sandbox
 GATEWAY_SANDBOX_URL=https://api-sandbox.co.uat.payment-gateway.dev/v1
