@@ -15,7 +15,7 @@ export const getTypeOrmConfig = (
     type: 'postgres',
     url,
     ssl: configService.get<string>('NODE_ENV') === 'production'
-      ? { rejectUnauthorized: true }
+      ? { rejectUnauthorized: false }
       : {
         rejectUnauthorized: false,
       },
