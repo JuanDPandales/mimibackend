@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { WinstonModule } from 'nest-winston';
 import { AppController } from './app.controller';
@@ -28,13 +28,18 @@ import { getTypeOrmConfig } from './shared/database/typeorm.config';
     AuditModule,
     ThrottlerModule.forRoot(throttlerConfig),
 
-    ProductsModule, StockModule, CustomersModule, DeliveriesModule, TransactionsModule],
+    ProductsModule,
+    StockModule,
+    CustomersModule,
+    DeliveriesModule,
+    TransactionsModule,
+  ],
   controllers: [AppController],
   providers: [
     AppService,
     {
       provide: 'APP_GUARD',
-      useClass: require('@nestjs/throttler').ThrottlerGuard,
+      useClass: ThrottlerGuard,
     },
   ],
 })
