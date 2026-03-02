@@ -8,6 +8,7 @@ import { CustomersModule } from '../customers/customers.module';
 import { DeliveriesModule } from '../deliveries/deliveries.module';
 import { ProductsModule } from '../products/products.module';
 import { StockModule } from '../stock/stock.module';
+import { FinalizeTransactionService } from './application/use-cases/finalize-transaction.service';
 import { GetTransactionUseCase } from './application/use-cases/get-transaction.service';
 import { ProcessPaymentService } from './application/use-cases/process-payment.service';
 import { TRANSACTION_REPOSITORY } from './domain/transaction.repository';
@@ -29,6 +30,7 @@ import { WebhooksController } from './presentation/webhooks.controller';
   controllers: [TransactionsController, WebhooksController],
   providers: [
     ProcessPaymentService,
+    FinalizeTransactionService,
     GetTransactionUseCase,
     PaymentGatewayService,
     {

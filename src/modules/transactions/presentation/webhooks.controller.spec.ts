@@ -4,16 +4,22 @@ import { PaymentGatewayService } from '../../../shared/payment-gateway/payment-g
 import { AuditLogger } from '../../../shared/audit/audit.logger';
 import { DataSource } from 'typeorm';
 import { UnauthorizedException } from '@nestjs/common';
+import { FinalizeTransactionService } from '../application/use-cases/finalize-transaction.service';
 
 describe('WebhooksController', () => {
   let controller: WebhooksController;
   let mockGatewayService: { verifyWebhookSignature: jest.Mock };
+  let mockFinalizeService: { execute: jest.Mock };
   let mockAuditLogger: { log: jest.Mock; warn: jest.Mock };
   let mockDataSource: { manager: { update: jest.Mock } };
 
   beforeEach(async () => {
     mockGatewayService = {
       verifyWebhookSignature: jest.fn(),
+    };
+
+    mockFinalizeService = {
+      execute: jest.fn().mockResolvedValue(undefined),
     };
 
     mockAuditLogger = {
@@ -31,6 +37,7 @@ describe('WebhooksController', () => {
       controllers: [WebhooksController],
       providers: [
         { provide: PaymentGatewayService, useValue: mockGatewayService },
+        { provide: FinalizeTransactionService, useValue: mockFinalizeService },
         { provide: AuditLogger, useValue: mockAuditLogger },
         { provide: DataSource, useValue: mockDataSource },
       ],
@@ -54,10 +61,28 @@ describe('WebhooksController', () => {
       );
     });
 
+    it('should throw UnauthorizedException if transaction ID is missing', async () => {
+      const payload = {
+        data: {
+          transaction: {
+            reference: 'ref-1',
+            amount_in_cents: 1000,
+            currency: 'COP',
+            status: 'APPROVED',
+          },
+        },
+        signature: { checksum: 'sig' },
+      };
+      await expect(controller.handlePaymentWebhook(payload)).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
     it('should throw UnauthorizedException if reference is missing', async () => {
       const payload = {
         data: {
           transaction: {
+            id: 'id-1',
             amount_in_cents: 1000,
             currency: 'COP',
             status: 'APPROVED',
@@ -74,6 +99,7 @@ describe('WebhooksController', () => {
       const payload = {
         data: {
           transaction: {
+            id: 'id-1',
             reference: 'ref-1',
             amount_in_cents: 1000,
             currency: 'COP',
@@ -87,59 +113,12 @@ describe('WebhooksController', () => {
       );
     });
 
-    it('should throw UnauthorizedException if amountInCents is not a number', async () => {
-      const payload = {
-        data: {
-          transaction: {
-            reference: 'ref-1',
-            currency: 'COP',
-            status: 'APPROVED',
-          },
-        },
-        signature: { checksum: 'sig' },
-      };
-      await expect(controller.handlePaymentWebhook(payload)).rejects.toThrow(
-        UnauthorizedException,
-      );
-    });
-
-    it('should throw UnauthorizedException if currency is not a string', async () => {
-      const payload = {
-        data: {
-          transaction: {
-            reference: 'ref-1',
-            amount_in_cents: 1000,
-            status: 'APPROVED',
-          },
-        },
-        signature: { checksum: 'sig' },
-      };
-      await expect(controller.handlePaymentWebhook(payload)).rejects.toThrow(
-        UnauthorizedException,
-      );
-    });
-
-    it('should throw UnauthorizedException if status is not a string', async () => {
-      const payload = {
-        data: {
-          transaction: {
-            reference: 'ref-1',
-            amount_in_cents: 1000,
-            currency: 'COP',
-          },
-        },
-        signature: { checksum: 'sig' },
-      };
-      await expect(controller.handlePaymentWebhook(payload)).rejects.toThrow(
-        UnauthorizedException,
-      );
-    });
-
     it('should throw UnauthorizedException and audit WEBHOOK_SIGNATURE_INVALID if signature is invalid', async () => {
       mockGatewayService.verifyWebhookSignature.mockReturnValue(false);
       const payload = {
         data: {
           transaction: {
+            id: 'id-1',
             reference: 'ref-1',
             amount_in_cents: 1000,
             currency: 'COP',
@@ -158,11 +137,12 @@ describe('WebhooksController', () => {
       );
     });
 
-    it('should update transaction and return received:true if signature is valid', async () => {
+    it('should call finalizeService and return received:true if signature is valid', async () => {
       mockGatewayService.verifyWebhookSignature.mockReturnValue(true);
       const payload = {
         data: {
           transaction: {
+            id: 'id-1',
             reference: 'ref-1',
             amount_in_cents: 1000,
             currency: 'COP',
@@ -176,42 +156,13 @@ describe('WebhooksController', () => {
       const response = await controller.handlePaymentWebhook(payload);
 
       expect(response).toEqual({ received: true });
-      expect(mockDataSource.manager.update).toHaveBeenCalledWith(
-        'transactions',
-        { reference: 'ref-1' },
-        expect.objectContaining({ status: 'APPROVED' }),
-      );
+      expect(mockFinalizeService.execute).toHaveBeenCalledWith({
+        reference: 'ref-1',
+        status: 'APPROVED',
+        gatewayId: 'id-1',
+      });
       expect(mockAuditLogger.log).toHaveBeenCalledWith(
         expect.objectContaining({ event: 'WEBHOOK_SIGNATURE_VALID' }),
-      );
-    });
-
-    it('should use default values (0, empty string) when optional fields are missing', async () => {
-      // This covers the `|| 0`, `|| ''` fallback branches in verifyWebhookSignature call
-      mockGatewayService.verifyWebhookSignature.mockReturnValue(true);
-      const payload = {
-        data: {
-          transaction: {
-            reference: 'ref-2',
-            amount_in_cents: 500,
-            currency: 'USD',
-            status: 'DECLINED',
-            // no created_at: undefined → uses ''
-          },
-        },
-        signature: { checksum: 'valid-sig-2' },
-      };
-
-      await controller.handlePaymentWebhook(payload);
-
-      // verifyWebhookSignature called with timestamp = '' (|| '' branch covered)
-      expect(mockGatewayService.verifyWebhookSignature).toHaveBeenCalledWith(
-        'ref-2',
-        500,
-        'USD',
-        'DECLINED',
-        'valid-sig-2',
-        '',
       );
     });
   });

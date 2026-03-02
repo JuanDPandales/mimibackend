@@ -9,10 +9,12 @@ import { SkipThrottle } from '@nestjs/throttler';
 import { DataSource } from 'typeorm';
 import { AuditLogger } from '../../../shared/audit/audit.logger';
 import { PaymentGatewayService } from '../../../shared/payment-gateway/payment-gateway.service';
+import { FinalizeTransactionService } from '../application/use-cases/finalize-transaction.service';
 
 export interface WebhookPayload {
   data?: {
     transaction?: {
+      id?: string;
       reference?: string;
       amount_in_cents?: number;
       currency?: string;
@@ -29,6 +31,7 @@ export class WebhooksController {
 
   constructor(
     private readonly gatewayService: PaymentGatewayService,
+    private readonly finalizeService: FinalizeTransactionService,
     private readonly audit: AuditLogger,
     private readonly dataSource: DataSource,
   ) { }
@@ -41,8 +44,8 @@ export class WebhooksController {
       metadata: { body: payload },
     });
 
-    // We will map based on the implementation plan Sandbox example payload
     const {
+      id: transactionId,
       reference,
       amount_in_cents: amountInCents,
       currency,
@@ -52,6 +55,7 @@ export class WebhooksController {
     const signature = payload.signature?.checksum;
 
     if (
+      !transactionId ||
       !reference ||
       !signature ||
       typeof amountInCents !== 'number' ||
@@ -62,12 +66,11 @@ export class WebhooksController {
     }
 
     const isValid = this.gatewayService.verifyWebhookSignature(
-      reference,
-      amountInCents || 0,
-      currency || '',
-      status || '',
-      signature,
+      transactionId,
+      status,
+      amountInCents,
       timestamp || '',
+      signature,
     );
 
     if (!isValid) {
@@ -84,12 +87,12 @@ export class WebhooksController {
       reference,
     });
 
-    // Actualizar transacción
-    await this.dataSource.manager.update(
-      'transactions',
-      { reference },
-      { status, updated_at: new Date() },
-    );
+    // Finalizar transacción usando el servicio compartido
+    await this.finalizeService.execute({
+      reference: reference,
+      status: status,
+      gatewayId: transactionId,
+    });
 
     return { received: true };
   }
