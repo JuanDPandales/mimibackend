@@ -30,7 +30,37 @@ const appDataSource = new DataSource({
     }
 });
 
+async function createDatabase() {
+    const tempDataSource = new DataSource({
+        type: 'postgres',
+        host: process.env.DB_HOST || 'localhost',
+        port: Number(process.env.DB_PORT) || 5432,
+        username: process.env.DB_USER || 'postgres',
+        password: process.env.DB_PASS || 'PunPr333123sss0rf',
+        database: 'postgres',
+        ssl: {
+            rejectUnauthorized: false
+        }
+    });
+
+    try {
+        await tempDataSource.initialize();
+        const result = await tempDataSource.query(`SELECT 1 FROM pg_database WHERE datname = 'mimidatabase'`);
+        if (result.length === 0) {
+            await tempDataSource.query(`CREATE DATABASE mimidatabase`);
+            console.log('Database "mimidatabase" created successfully.');
+        } else {
+            console.log('Database "mimidatabase" already exists.');
+        }
+    } catch (error) {
+        console.error('Error creating database:', error);
+    } finally {
+        await tempDataSource.destroy();
+    }
+}
+
 async function runSeed() {
+    await createDatabase();
     try {
         await appDataSource.initialize();
         console.log('Database connection initialized.');
